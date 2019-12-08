@@ -40,7 +40,9 @@ const unsigned int SCR_HEIGHT = 720;
 const float PI = 3.14159265359;
 const float TAU = 2 * PI;
 
-bool filling = false;
+bool filling = false; //press SPACE to see scene without textures
+bool shadows = true;
+bool shadowsKeyPressed = false; //press H to enable/disable shadows
 
 // camera
 Camera camera(glm::vec3(0.0f, 0.0f, 5.0f));
@@ -95,30 +97,31 @@ int main() {
     Shader lampShader("basic_vert.glsl", "white_frag.glsl");
 
     Shader shadowShader("shadow_mapping_vert.glsl", "shadow_mapping_frag.glsl");
-    Shader shadowDepthShader("shadow_mapping_depth_vert.glsl", "shadow_mapping_depth_frag.glsl");
+    Shader shadowDepthShader("shadow_mapping_depth_vert.glsl", "shadow_mapping_depth_frag.glsl", "shadow_mapping_depth_geom.glsl");
 //    Shader bloomShader("bloom_vert.glsl", "bloom_frag.glsl");
 //    Shader lightShader("bloom_vert.glsl", "light_box.glsl");
 //    Shader blurShader("blur_vert.glsl", "blur_frag.glsl");
 //    Shader bloomFinalShader("bloom_final_vert.glsl", "bloom_final_frag.glsl");
 
     // configure depth map FBO
+    // -----------------------
     const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
     unsigned int depthMapFBO;
     glGenFramebuffers(1, &depthMapFBO);
-    // create depth texture
-    unsigned int depthMap;
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    // create depth cubemap texture
+    unsigned int depthCubemap;
+    glGenTextures(1, &depthCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+    for (unsigned int i = 0; i < 6; ++i)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     // attach depth texture as FBO's depth buffer
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemap, 0);
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -186,13 +189,19 @@ int main() {
 //            std::cout << "Framebuffer not complete!" << std::endl;
 //    }
 
+    //load textures
     unsigned int floorTexture = loadTexture(FileSystem::getPath("resources/textures/wood.png").c_str());
     unsigned int floorSpecularMap = loadTexture(FileSystem::getPath("resources/textures/wood_specular.png").c_str());
 
-    // load lighting shader textures
     unsigned int diffuseMap = loadTexture(FileSystem::getPath("resources/textures/container2.png").c_str());
     unsigned int specularMap = loadTexture(FileSystem::getPath("resources/textures/container2_specular.png").c_str());
     unsigned int emissionMap = loadTexture(FileSystem::getPath("resources/textures/container2_neon.jpg").c_str());
+
+    // shader configuration
+    shadowShader.use();
+    shadowShader.setInt("diffuseTexture", 0);
+    shadowShader.setInt("depthMap", 1);
+
     lightingShader.use();
     lightingShader.setInt("material.diffuse", 0);
     lightingShader.setInt("material.specular", 1);
@@ -231,40 +240,102 @@ int main() {
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 1000.0f);
 
-        lightingShader.use();
-        lightingShader.setVec3("viewPos", camera.Position);
-        lightingShader.setFloat("material.shininess", 64.0f);
-        lightingShader.setFloat("time", glfwGetTime());
+        if (shadows) {
+            // 0. create depth cubemap transformation matrices
+            // only ONE light source used for shadow!
+            glm::vec3 lightPos(1.0, 1.0, sin(glfwGetTime() * 0.5) * 3.0);
+            float near_plane = 1.0f;
+            float far_plane = 25.0f;
+            glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT, near_plane, far_plane);
+            std::vector<glm::mat4> shadowTransforms;
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+            shadowTransforms.push_back(shadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
 
-        //point lights
-        for (int i = 0; i < 4; i++) {
-            lightingShader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
-            lightingShader.setVec3("pointLights["  + std::to_string(i) + "].ambient", 0.07f, 0.07f, 0.07f);
-            lightingShader.setVec3("pointLights["  + std::to_string(i) + "].diffuse", 0.8f, 0.8f, 0.8f);
-            lightingShader.setVec3("pointLights["  + std::to_string(i) + "].specular", 1.0f, 1.0f, 1.0f);
-            lightingShader.setFloat("pointLights["  + std::to_string(i) + "].constant", 1.0f);
-            lightingShader.setFloat("pointLights["  + std::to_string(i) + "].linear", 0.09);
-            lightingShader.setFloat("pointLights["  + std::to_string(i) + "].quadratic", 0.032);
+            // 1. render scene to depth cubemap
+            glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            shadowDepthShader.use();
+            for (unsigned int i = 0; i < 6; ++i)
+                shadowDepthShader.setMat4("shadowMatrices[" + std::to_string(i) + "]", shadowTransforms[i]);
+            shadowDepthShader.setFloat("far_plane", far_plane);
+            shadowDepthShader.setVec3("lightPos", lightPos);
+            renderScene(shadowDepthShader, floorTexture, floorSpecularMap, diffuseMap, specularMap, emissionMap);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            // 2.1 render scene using the generated depth/shadow map
+            glViewport(0, 0, SCR_WIDTH * 2, SCR_HEIGHT * 2);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            shadowShader.use();
+            shadowShader.setMat4("projection", projection);
+            shadowShader.setMat4("view", view);
+            shadowShader.setVec3("lightPos", lightPos);
+            shadowShader.setVec3("viewPos", camera.Position);
+            shadowShader.setFloat("far_plane", far_plane);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, floorTexture);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+            //render floor
+            glm::mat4 model = glm::mat4(1.0f);
+            shadowShader.setMat4("model", model);
+            renderFloor();
+
+            // bind cubes diffuse map
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, diffuseMap);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+            // render boxes
+            for (unsigned int i = 0; i < 4; i++) {
+                float angle = 15.0f;
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, cubePositions[i]);
+                model = glm::rotate(model,i * ((i & 1) ? (float)glfwGetTime() : angle), glm::vec3(1.0f, 0.3f, 0.5f));
+                shadowShader.setMat4("model", model);
+                renderCube();
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        } else {
+            // 2.2 render scene with other lights
+            glViewport(0, 0, SCR_WIDTH * 2, SCR_HEIGHT * 2);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            lightingShader.use();
+            lightingShader.setMat4("projection", projection);
+            lightingShader.setMat4("view", view);
+            lightingShader.setVec3("viewPos", camera.Position);
+            lightingShader.setFloat("material.shininess", 64.0f);
+            lightingShader.setFloat("time", glfwGetTime());
+            //point lights
+            for (int i = 0; i < 4; i++) {
+                lightingShader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].ambient", 0.07f, 0.07f, 0.07f);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].diffuse", 0.8f, 0.8f, 0.8f);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].specular", 1.0f, 1.0f, 1.0f);
+                lightingShader.setFloat("pointLights["  + std::to_string(i) + "].constant", 1.0f);
+                lightingShader.setFloat("pointLights["  + std::to_string(i) + "].linear", 0.09);
+                lightingShader.setFloat("pointLights["  + std::to_string(i) + "].quadratic", 0.032);
+            }
+            renderScene(lightingShader, floorTexture, floorSpecularMap, diffuseMap, specularMap, emissionMap);
+
+            // 3. render lamps
+            lampShader.use();
+            lampShader.setMat4("projection", projection);
+            lampShader.setMat4("view", view);
+            for (unsigned int i = 0; i < 4; i++) {
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, pointLightPositions[i]);
+                model = glm::scale(model, glm::vec3(0.2f));
+                lampShader.setMat4("model", model);
+                renderCube();
+            }
         }
 
-        lightingShader.setMat4("projection", projection);
-        lightingShader.setMat4("view", view);
-
-        renderScene(lightingShader, floorTexture, floorSpecularMap, diffuseMap, specularMap, emissionMap);
-
-        lampShader.setMat4("projection", projection);
-        lampShader.setMat4("view", view);
-        //render lamps
-        for (unsigned int i = 0; i < 4; i++) {
-            model = glm::mat4(1.0f);
-            model = glm::translate(model, pointLightPositions[i]);
-            model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(1.0f, 0.0f, 0.0f));
-            model = glm::scale(model, glm::vec3(0.2f));
-            lampShader.setMat4("model", model);
-            renderTorus();
-        }
-
-        // render skybox as last
+        // 4. render skybox as last
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
         skyboxShader.use();
         //glDepthMask(GL_FALSE);
@@ -312,6 +383,15 @@ void processInput(GLFWwindow *window) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             filling = false;
         }
+    }
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS && !shadowsKeyPressed)
+    {
+        shadows = !shadows;
+        shadowsKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_RELEASE)
+    {
+        shadowsKeyPressed = false;
     }
 }
 
