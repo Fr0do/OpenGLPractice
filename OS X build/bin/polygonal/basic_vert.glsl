@@ -1,0 +1,1 @@
+/Users/maximkurkin/Downloads/5 семестр/openglpractice/src/polygonal/basic_vert.glsl
