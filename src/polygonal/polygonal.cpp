@@ -16,8 +16,8 @@
 #include "../objects.h"
 
 #include <iostream>
-#include<string>
-#include<vector>
+#include <string>
+#include <vector>
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
@@ -27,16 +27,18 @@ unsigned int loadTexture(const char *path);
 unsigned int loadCubemap(std::vector<std::string> faces);
 void renderFloor();
 void renderCube();
-void renderScene(const Shader &shader, unsigned int flSpecular, unsigned int flDiffuse,
-                 unsigned int cSpecular, unsigned int cDiffuse, unsigned int cEmission);
+void renderWall();
+void renderScene(const Shader &shader, unsigned int flDiffuse, unsigned int flSpecular,
+                 unsigned int cDiffuse, unsigned int cSpecular, unsigned int cEmission);
 void renderSkybox();
 void renderSphere(int xSeg = 64, int ySeg = 64);
 void renderTorus(double r = 0.2, double c = 0.45,
                  int rSeg = 64, int cSeg = 32);
 
 // settings
-const unsigned int SCR_WIDTH = 1280;
-const unsigned int SCR_HEIGHT = 720;
+const unsigned int SCR_WIDTH = 1920;
+const unsigned int SCR_HEIGHT = 1000;
+float heightScale = 0.1;
 const float PI = 3.14159265359;
 const float TAU = 2 * PI;
 
@@ -94,17 +96,12 @@ int main() {
     // build and compile shaders
     Shader skyboxShader("skybox_vert.glsl", "skybox_frag.glsl");
     Shader lightingShader("basic_vert.glsl", "lights_frag.glsl");
-    Shader lampShader("basic_vert.glsl", "white_frag.glsl");
-
+    Shader lampShader("basic_vert.glsl", "lamp_frag.glsl");
     Shader shadowShader("shadow_mapping_vert.glsl", "shadow_mapping_frag.glsl");
     Shader shadowDepthShader("shadow_mapping_depth_vert.glsl", "shadow_mapping_depth_frag.glsl", "shadow_mapping_depth_geom.glsl");
-//    Shader bloomShader("bloom_vert.glsl", "bloom_frag.glsl");
-//    Shader lightShader("bloom_vert.glsl", "light_box.glsl");
-//    Shader blurShader("blur_vert.glsl", "blur_frag.glsl");
-//    Shader bloomFinalShader("bloom_final_vert.glsl", "bloom_final_frag.glsl");
+    Shader parallaxShader("parallax_mapping_vert.glsl", "parallax_mapping_frag.glsl");
 
     // configure depth map FBO
-    // -----------------------
     const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
     unsigned int depthMapFBO;
     glGenFramebuffers(1, &depthMapFBO);
@@ -132,70 +129,17 @@ int main() {
     shadowShader.setInt("diffuseTexture", 0);
     shadowShader.setInt("shadowMap", 1);
 
-
-    // lighting info
-    //glm::vec3 lightPos(-2.0f, 4.0f, -1.0f);
-
-
-    // configure (floating point) framebuffers
-//    unsigned int hdrFBO;
-//    glGenFramebuffers(1, &hdrFBO);
-//    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-//    // create 2 floating point color buffers (one for normal rendering, another for brightness treshold values)
-//    unsigned int colorBuffers[2];
-//    glGenTextures(2, colorBuffers);
-//    for (unsigned int i = 0; i < 2; i++)
-//    {
-//        glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-//        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//        // attach texture to framebuffer
-//        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
-//    }
-//    // create and attach depth buffer (renderbuffer)
-//    unsigned int rboDepth;
-//    glGenRenderbuffers(1, &rboDepth);
-//    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-//    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
-//    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-//    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
-//    unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-//    glDrawBuffers(2, attachments);
-//    // finally check if framebuffer is complete
-//    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-//        std::cout << "Framebuffer not complete!" << std::endl;
-//    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-//
-//    // ping-pong-framebuffer for blurring
-//    unsigned int pingpongFBO[2];
-//    unsigned int pingpongColorbuffers[2];
-//    glGenFramebuffers(2, pingpongFBO);
-//    glGenTextures(2, pingpongColorbuffers);
-//    for (unsigned int i = 0; i < 2; i++)
-//    {
-//        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-//        glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
-//        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-//        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
-//        // also check if framebuffers are complete (no need for depth buffer)
-//        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-//            std::cout << "Framebuffer not complete!" << std::endl;
-//    }
-
     //load textures
-    unsigned int floorTexture = loadTexture(FileSystem::getPath("resources/textures/wood.png").c_str());
+    unsigned int floorTexture     = loadTexture(FileSystem::getPath("resources/textures/wood.png").c_str());
     unsigned int floorSpecularMap = loadTexture(FileSystem::getPath("resources/textures/wood_specular.png").c_str());
 
-    unsigned int diffuseMap = loadTexture(FileSystem::getPath("resources/textures/container2.png").c_str());
-    unsigned int specularMap = loadTexture(FileSystem::getPath("resources/textures/container2_specular.png").c_str());
-    unsigned int emissionMap = loadTexture(FileSystem::getPath("resources/textures/container2_neon.jpg").c_str());
+    unsigned int boxDiffuseMap  = loadTexture(FileSystem::getPath("resources/textures/container2.png").c_str());
+    unsigned int boxSpecularMap = loadTexture(FileSystem::getPath("resources/textures/container2_specular.png").c_str());
+    unsigned int boxEmissionMap = loadTexture(FileSystem::getPath("resources/textures/container2_neon.jpg").c_str());
+
+    unsigned int groundDiffuseMap = loadTexture(FileSystem::getPath("resources/textures/pbr/acoustic/albedo.jpg").c_str());
+    unsigned int groundNormalMap  = loadTexture(FileSystem::getPath("resources/textures/pbr/acoustic/normal.jpg").c_str());
+    unsigned int groundHeightMap  = loadTexture(FileSystem::getPath("resources/textures/pbr/acoustic/displacement.png").c_str());
 
     // shader configuration
     shadowShader.use();
@@ -206,6 +150,14 @@ int main() {
     lightingShader.setInt("material.diffuse", 0);
     lightingShader.setInt("material.specular", 1);
     lightingShader.setInt("material.emission", 2);
+
+    parallaxShader.use();
+    parallaxShader.setInt("diffuseMap", 0);
+    parallaxShader.setInt("normalMap", 1);
+    parallaxShader.setInt("depthMap", 2);
+
+    lampShader.use();
+    lampShader.setInt("lightColor", 0);
 
     //load skybox textures
     std::vector<std::string> faces
@@ -243,7 +195,7 @@ int main() {
         if (shadows) {
             // 0. create depth cubemap transformation matrices
             // only ONE light source used for shadow!
-            glm::vec3 lightPos(1.0, 1.0, sin(glfwGetTime() * 0.5) * 3.0);
+            glm::vec3 lightPos(3.0, 1.0, sin(glfwGetTime() * 0.5) * 3.0);
             float near_plane = 1.0f;
             float far_plane = 25.0f;
             glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT, near_plane, far_plane);
@@ -264,7 +216,7 @@ int main() {
                 shadowDepthShader.setMat4("shadowMatrices[" + std::to_string(i) + "]", shadowTransforms[i]);
             shadowDepthShader.setFloat("far_plane", far_plane);
             shadowDepthShader.setVec3("lightPos", lightPos);
-            renderScene(shadowDepthShader, floorTexture, floorSpecularMap, diffuseMap, specularMap, emissionMap);
+            renderScene(shadowDepthShader, floorTexture, floorSpecularMap, boxDiffuseMap, boxSpecularMap, boxEmissionMap);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
             // 2.1 render scene using the generated depth/shadow map
@@ -281,13 +233,13 @@ int main() {
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
             //render floor
-            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::mat4(1.0f);
             shadowShader.setMat4("model", model);
             renderFloor();
 
             // bind cubes diffuse map
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, diffuseMap);
+            glBindTexture(GL_TEXTURE_2D, boxDiffuseMap);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
             // render boxes
@@ -313,26 +265,46 @@ int main() {
             //point lights
             for (int i = 0; i < 4; i++) {
                 lightingShader.setVec3("pointLights[" + std::to_string(i) + "].position", pointLightPositions[i]);
-                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].ambient", 0.07f, 0.07f, 0.07f);
-                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].diffuse", 0.8f, 0.8f, 0.8f);
-                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].specular", 1.0f, 1.0f, 1.0f);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].ambient", pointLightColors[i].x * 0.1,  pointLightColors[i].y  * 0.1,  pointLightColors[i].z * 0.1);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].diffuse", pointLightColors[i].x,  pointLightColors[i].y,  pointLightColors[i].z);
+                lightingShader.setVec3("pointLights["  + std::to_string(i) + "].specular", pointLightColors[i].x,  pointLightColors[i].y,  pointLightColors[i].z);
                 lightingShader.setFloat("pointLights["  + std::to_string(i) + "].constant", 1.0f);
                 lightingShader.setFloat("pointLights["  + std::to_string(i) + "].linear", 0.09);
                 lightingShader.setFloat("pointLights["  + std::to_string(i) + "].quadratic", 0.032);
             }
-            renderScene(lightingShader, floorTexture, floorSpecularMap, diffuseMap, specularMap, emissionMap);
+            renderScene(lightingShader, floorTexture, floorSpecularMap, boxDiffuseMap, boxSpecularMap, boxEmissionMap);
 
             // 3. render lamps
             lampShader.use();
             lampShader.setMat4("projection", projection);
             lampShader.setMat4("view", view);
-            for (unsigned int i = 0; i < 4; i++) {
+            for (int i = 0; i < 4; i++) {
                 model = glm::mat4(1.0f);
                 model = glm::translate(model, pointLightPositions[i]);
                 model = glm::scale(model, glm::vec3(0.2f));
+                lampShader.setVec3("lightColor", pointLightColors[i]);
                 lampShader.setMat4("model", model);
                 renderCube();
             }
+
+            // 4. render parallax-mapped wall
+            parallaxShader.use();
+            parallaxShader.setMat4("projection", projection);
+            parallaxShader.setMat4("view", view);
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, wallPosition);
+            model = glm::rotate(model, glm::radians((float)glfwGetTime() * -5.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // rotate the quad to show parallax mapping from multiple directions
+            parallaxShader.setMat4("model", model);
+            parallaxShader.setVec3("viewPos", camera.Position);
+            parallaxShader.setVec3("lightPos", pointLightPositions[2]);
+            parallaxShader.setFloat("heightScale", heightScale); // adjust with Q and E keys
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, groundDiffuseMap);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, groundNormalMap);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, groundHeightMap);
+            renderWall();
         }
 
         // 4. render skybox as last
@@ -393,6 +365,21 @@ void processInput(GLFWwindow *window) {
     {
         shadowsKeyPressed = false;
     }
+
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+    {
+        if (heightScale > 0.0f)
+            heightScale -= 0.0005f;
+        else
+            heightScale = 0.0f;
+    }
+    else if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+    {
+        if (heightScale < 1.0f)
+            heightScale += 0.0005f;
+        else
+            heightScale = 1.0f;
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -424,7 +411,6 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
     camera.ProcessMouseScroll(yoffset);
 }
-
 
 // renders the 3D scene
 void renderScene(const Shader &shader, unsigned int flDiffuse, unsigned int flSpecular,
@@ -490,8 +476,7 @@ void renderFloor() {
 unsigned int cubeVAO = 0;
 void renderCube()
 {
-    if (cubeVAO == 0)
-    {
+    if (cubeVAO == 0) {
         unsigned int cubeVBO = 0;
         glGenVertexArrays(1, &cubeVAO);
         glGenBuffers(1, &cubeVBO);
@@ -517,6 +502,98 @@ void renderCube()
     glBindVertexArray(0);
 }
 
+
+// renders a 1x1 wall with  tangent vectors
+unsigned int wallVAO = 0;
+unsigned int wallVBO;
+void renderWall()
+{
+    if (wallVAO == 0) {
+        // positions
+        glm::vec3 pos1(-1.0f,  1.0f, 0.0f);
+        glm::vec3 pos2(-1.0f, -1.0f, 0.0f);
+        glm::vec3 pos3( 1.0f, -1.0f, 0.0f);
+        glm::vec3 pos4( 1.0f,  1.0f, 0.0f);
+        // texture coordinates
+        glm::vec2 uv1(0.0f, 1.0f);
+        glm::vec2 uv2(0.0f, 0.0f);
+        glm::vec2 uv3(1.0f, 0.0f);
+        glm::vec2 uv4(1.0f, 1.0f);
+        // normal vector
+        glm::vec3 nm(0.0f, 0.0f, 1.0f);
+
+        // calculate tangent/bitangent vectors of both triangles
+        glm::vec3 tangent1, bitangent1;
+        glm::vec3 tangent2, bitangent2;
+        // triangle 1
+        glm::vec3 edge1 = pos2 - pos1;
+        glm::vec3 edge2 = pos3 - pos1;
+        glm::vec2 deltaUV1 = uv2 - uv1;
+        glm::vec2 deltaUV2 = uv3 - uv1;
+
+        float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+        tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+        tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+        tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+        tangent1 = glm::normalize(tangent1);
+
+        bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+        bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+        bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+        bitangent1 = glm::normalize(bitangent1);
+
+        // triangle 2
+        edge1 = pos3 - pos1;
+        edge2 = pos4 - pos1;
+        deltaUV1 = uv3 - uv1;
+        deltaUV2 = uv4 - uv1;
+
+        f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+        tangent2.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+        tangent2.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+        tangent2.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+        tangent2 = glm::normalize(tangent2);
+
+
+        bitangent2.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+        bitangent2.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+        bitangent2.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+        bitangent2 = glm::normalize(bitangent2);
+
+
+        float wallVertices[] = {
+                // positions            // normal         // texcoords  // tangent                          // bitangent
+                pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+                pos2.x, pos2.y, pos2.z, nm.x, nm.y, nm.z, uv2.x, uv2.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+                pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+
+                pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+                pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+                pos4.x, pos4.y, pos4.z, nm.x, nm.y, nm.z, uv4.x, uv4.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z
+        };
+        // configure plane VAO
+        glGenVertexArrays(1, &wallVAO);
+        glGenBuffers(1, &wallVBO);
+        glBindVertexArray(wallVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, wallVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(wallVertices), &wallVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)nullptr);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(6 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(float), (void*)(11 * sizeof(float)));
+    }
+    glBindVertexArray(wallVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
 
 // renders skybox
 unsigned int skyboxVAO = 0;
@@ -546,8 +623,7 @@ unsigned int sphereIndexCount = 0;
 unsigned int sphereVAO = 0;
 void renderSphere(int xSeg, int ySeg)
 {
-    if (sphereVAO == 0)
-    {
+    if (sphereVAO == 0) {
         glGenVertexArrays(1, &sphereVAO);
 
         unsigned int vbo, ebo;
@@ -569,9 +645,9 @@ void renderSphere(int xSeg, int ySeg)
                 float yPos = std::cos(ySegment * PI);
                 float zPos = std::sin(xSegment * TAU) * std::sin(ySegment * PI);
 
-                positions.push_back(glm::vec3(xPos, yPos, zPos));
-                normals.push_back(glm::vec3(xPos, yPos, zPos));
-                uv.push_back(glm::vec2(xSegment, ySegment));
+                positions.emplace_back(xPos, yPos, zPos);
+                normals.emplace_back(xPos, yPos, zPos);
+                uv.emplace_back(xSegment, ySegment);
             }
         }
 
@@ -604,13 +680,13 @@ void renderSphere(int xSeg, int ySeg)
             data.push_back(positions[i].x);
             data.push_back(positions[i].y);
             data.push_back(positions[i].z);
-            if (normals.size() > 0)
+            if (!normals.empty())
             {
                 data.push_back(normals[i].x);
                 data.push_back(normals[i].y);
                 data.push_back(normals[i].z);
             }
-            if (uv.size() > 0)
+            if (!uv.empty())
             {
                 data.push_back(uv[i].x);
                 data.push_back(uv[i].y);
@@ -623,14 +699,14 @@ void renderSphere(int xSeg, int ySeg)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
         float stride = (3 + 3 + 2) * sizeof(float);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)nullptr);
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
     }
     glBindVertexArray(sphereVAO);
-    glDrawElements(GL_TRIANGLE_STRIP, sphereIndexCount, GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLE_STRIP, sphereIndexCount, GL_UNSIGNED_INT, nullptr);
 }
 
 // renders (and builds at first invocation) a torus
@@ -664,12 +740,12 @@ void renderTorus(double r, double c,
                     double yPos = (c + r * std::cos(s * TAU / rSeg)) * std::sin(t * TAU / cSeg);
                     double zPos = r * std::sin(s * TAU / rSeg);
 
-                    double u = (i + k) / (float) rSeg;
+                    double u = (float) (i + k) / (float) rSeg;
                     double v = t / (float) cSeg;
 
-                    positions.push_back(glm::vec3(2 * xPos, 2 * yPos, 2 * zPos));
-                    normals.push_back(glm::vec3(2 * xPos, 2 * yPos, 2 * zPos));
-                    uv.push_back(glm::vec2(u, v));
+                    positions.emplace_back(2 * xPos, 2 * yPos, 2 * zPos);
+                    normals.emplace_back(2 * xPos, 2 * yPos, 2 * zPos);
+                    uv.emplace_back(u, v);
                 }
             }
         }
@@ -704,13 +780,13 @@ void renderTorus(double r, double c,
             data.push_back(positions[i].x);
             data.push_back(positions[i].y);
             data.push_back(positions[i].z);
-            if (normals.size() > 0)
+            if (!normals.empty())
             {
                 data.push_back(normals[i].x);
                 data.push_back(normals[i].y);
                 data.push_back(normals[i].z);
             }
-            if (uv.size() > 0)
+            if (!uv.empty())
             {
                 data.push_back(uv[i].x);
                 data.push_back(uv[i].y);
@@ -723,7 +799,7 @@ void renderTorus(double r, double c,
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
         float stride = (3 + 3 + 2) * sizeof(float);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)nullptr);
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
         glEnableVertexAttribArray(2);

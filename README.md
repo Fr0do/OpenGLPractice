@@ -1,29 +1,42 @@
 # OpenGLPractice
-CMC MSU 2020 OpenGL practice task.
+CMC MSU 2020 OpenGL practice task. Выполнил Куркин Максим Леонидович, группа 309, maxkurkin@inbox.ru
 
-## Windows building
-All relevant libraries are found in /lib, just create the CMake project in VS `https://docs.microsoft.com/ru-ru/cpp/build/cmake-projects-in-visual-studio?view=vs-2019` or build directly with CMake.
+## Эффекты:  
+Кубическая текстура в режиме окружающей среды(skybox) - в polygonal,
+Попиксельный расчёт освещённости - в polygonal,
+Отбрасывание теней на объекты и плоскость - в polygonal,
+Нечёткие тени - в polygonal, 
+Normal mapping - в polygonal,
+Parallax relief mapping - в polygonal,
+Нестандартное освещение(модель Кука-Торранса) - в pbr,
+Процедурные текстуры(тор, сфера) - в pbr.
 
-## Linux building
+
+
+## Сборка на Windows
+Необходимые библиотеки находятся в /lib, нужно только создать CMake проект в VS `https://docs.microsoft.com/ru-ru/cpp/build/cmake-projects-in-visual-studio?view=vs-2019` или собрать напрямую с помощью CMake.
+
+## Сборка на Linux/OS X
 ```
-apt-get install g++ cmake git
-apt-get install libglm-dev libglew-dev libglfw3-dev libxinerama-dev libxcursor-dev  libxi-dev
 mkdir build
 cd build
 cmake ..
 make
 ```
+Запуск: 
+```
+cd ./build/bin/pbr
+./pbr
+ 
+или 
 
-CodeBlocks or VS or other IDEs can have troubles finding files, so set the environment variable:
+cd ./build/bin/polygonal
+./polygonal
+```
+
+CodeBlocks, VS или другие IDE могут не найти нужные файлы, установите переменную окружения:
 
     `export LOGL_ROOT_PATH=/your_path/openglpractice`
 
-## Mac OS X building
+К проекту приложены исполняемые файлы, сгенерированные на OS X.
 
-```
-brew install cmake glm glfw
-mkdir build
-cd build
-cmake ..
-make
-```

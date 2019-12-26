@@ -114,12 +114,19 @@ glm::vec3 cubePositions[] = {
         glm::vec3(2.0f, 4.0f, 5.5f)
 };
 
+glm::vec3 wallPosition = glm::vec3( 3.0f,  1.5f, -10.0f);
+
 glm::vec3 pointLightPositions[] = {
         glm::vec3( 0.0f,  0.5f, -6.0f),
         glm::vec3( 5.7f,  0.2f,  2.0f),
         glm::vec3( 2.3f, 5.0f, -4.0f),
         glm::vec3(-2.0f, 5.0f, 5.5f)
-
+};
+glm::vec3 pointLightColors[] = {
+        glm::vec3(1.0f, 0.6f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(1.0f, 1.0, 0.0),
+        glm::vec3(0.2f, 0.2f, 1.0f)
 };
 
 glm::vec3 pbrLightPositions[] = {

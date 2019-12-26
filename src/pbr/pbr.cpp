@@ -110,7 +110,6 @@ int main()
     unsigned int chainmailAo        = loadTexture(FileSystem::getPath("resources/textures/pbr/chainmail/ao.jpg").c_str());
 
     // lights
-
     int nrRows = 2;
     int nrColumns = 3;
     float spacing = 2.5;

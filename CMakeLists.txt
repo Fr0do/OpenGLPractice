@@ -4,59 +4,58 @@ cmake_policy(VERSION 2.8)
 project (OpenGLPractice)
 
 IF(NOT CMAKE_BUILD_TYPE)
-  SET(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
+    SET(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
 ENDIF(NOT CMAKE_BUILD_TYPE)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
 
 if(WIN32)
-	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 endif(WIN32)
 
 link_directories(${CMAKE_SOURCE_DIR}/lib)
 
 list(APPEND CMAKE_CXX_FLAGS "-std=c++11")
 
-# find the required packages
-find_package(GLM REQUIRED)
-message(STATUS "GLM included at ${GLM_INCLUDE_DIR}")
-find_package(GLFW3 REQUIRED)
-message(STATUS "Found GLFW3 in ${GLFW3_INCLUDE_DIR}")
 
+# link external
+add_subdirectory(external/glfw-3.3)
+include_directories(
+        external/glfw-3.3/include
+        external/glm
+)
+set(LIBS glfw)
 
 if(WIN32)
-  set(LIBS glfw3 opengl32)
+    set(LIBS ${LIBS} opengl32)
 elseif(UNIX AND NOT APPLE)
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
-  find_package(OpenGL REQUIRED)
-  add_definitions(${OPENGL_DEFINITIONS})
-  find_package(X11 REQUIRED)
-  set(LIBS ${GLFW3_LIBRARY} X11 Xrandr Xinerama Xi Xxf86vm Xcursor GL dl pthread)
-  set (CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -ldl")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
+    find_package(OpenGL REQUIRED)
+    add_definitions(${OPENGL_DEFINITIONS})
+    find_package(X11 REQUIRED)
+    set(LIBS ${LIBS} X11 Xrandr Xinerama Xi Xxf86vm Xcursor GL dl pthread)
+    set (CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE} -ldl")
 elseif(APPLE)
-  INCLUDE_DIRECTORIES(/System/Library/Frameworks)
-  FIND_LIBRARY(COCOA_LIBRARY Cocoa)
-  FIND_LIBRARY(OpenGL_LIBRARY OpenGL)
-  FIND_LIBRARY(IOKit_LIBRARY IOKit)
-  FIND_LIBRARY(CoreVideo_LIBRARY CoreVideo)
-  MARK_AS_ADVANCED(COCOA_LIBRARY OpenGL_LIBRARY)
-  SET(APPLE_LIBS ${COCOA_LIBRARY} ${IOKit_LIBRARY} ${OpenGL_LIBRARY} ${CoreVideo_LIBRARY})
-  SET(APPLE_LIBS ${APPLE_LIBS} ${GLFW3_LIBRARY})
-  set(LIBS ${LIBS} ${APPLE_LIBS})
-else()
-  set(LIBS )
+    INCLUDE_DIRECTORIES(/System/Library/Frameworks)
+    FIND_LIBRARY(COCOA_LIBRARY Cocoa)
+    FIND_LIBRARY(OpenGL_LIBRARY OpenGL)
+    FIND_LIBRARY(IOKit_LIBRARY IOKit)
+    FIND_LIBRARY(CoreVideo_LIBRARY CoreVideo)
+    MARK_AS_ADVANCED(COCOA_LIBRARY OpenGL_LIBRARY)
+    SET(APPLE_LIBS ${COCOA_LIBRARY} ${IOKit_LIBRARY} ${OpenGL_LIBRARY} ${CoreVideo_LIBRARY})
+    SET(APPLE_LIBS ${APPLE_LIBS} ${LIBS})
+    set(LIBS ${LIBS} ${APPLE_LIBS})
 endif(WIN32)
 
 set(CHAPTERS
-   polygonal
-   pbr
-)
+        polygonal
+        pbr
+        )
 
 
 configure_file(configuration/root_directory.h.in configuration/root_directory.h)
 include_directories(${CMAKE_BINARY_DIR}/configuration)
 
-# first create relevant static libraries requried for other projects
+# first create relevant static libraries
 add_library(STB_IMAGE "src/stb_image.cpp")
 set(LIBS ${LIBS} STB_IMAGE)
 
@@ -64,17 +63,16 @@ add_library(GLAD "src/glad.c")
 set(LIBS ${LIBS} GLAD)
 
 macro(makeLink src dest target)
-  add_custom_command(TARGET ${target} POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink ${src} ${dest}  DEPENDS  ${dest} COMMENT "mklink ${src} -> ${dest}")
+    add_custom_command(TARGET ${target} POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink ${src} ${dest}  DEPENDS  ${dest} COMMENT "mklink ${src} -> ${dest}")
 endmacro()
 
-# then create a project file per tutorial
-
+# then create two project files (pbr, polygonal)
 foreach(CHAPTER ${CHAPTERS})
     file(GLOB SOURCE
-        "src/${CHAPTER}/*.h"
-        "src/${CHAPTER}/*.cpp"
-        "src/${CHAPTER}/*.glsl"
-    )
+            "src/${CHAPTER}/*.h"
+            "src/${CHAPTER}/*.cpp"
+            "src/${CHAPTER}/*.glsl"
+            )
     set(NAME "${CHAPTER}")
     add_executable(${NAME} ${SOURCE})
     target_link_libraries(${NAME} ${LIBS})
@@ -89,7 +87,7 @@ foreach(CHAPTER ${CHAPTERS})
     endif(WIN32)
     # copy shader files to build directory
     file(GLOB SHADERS
-             "src/${CHAPTER}/*.glsl"
+            "src/${CHAPTER}/*.glsl"
             )
     foreach(SHADER ${SHADERS})
         if(WIN32)
